@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Horasan Keşif Rehberi</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0f1a; color: #e2e8f0; overflow: hidden; }
+  #harita { position: fixed; top: 56px; left: 0; right: 0; bottom: 0; z-index: 1; background: #0a0f1a; }
+  .leaflet-container { background: #0a0f1a !important; cursor: default !important; }
+  .leaflet-container.leaflet-dragging { cursor: grabbing !important; }
+  .leaflet-control-attribution { background: #1e293bcc !important; color: #64748b !important; }
+  .leaflet-control-attribution a { color: #94a3b8 !important; }
+  .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9) saturate(0.6); }
+
+  header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 2000;
+    background: linear-gradient(135deg, #1e293b, #0a0f1a);
+    padding: 10px 16px; display: flex; align-items: center; justify-content: space-between;
+    box-shadow: 0 2px 20px #0008; border-bottom: 1px solid #1e293b;
+  }
+  header h1 { font-size: 15px; font-weight: 700; background: linear-gradient(90deg,#fbbf24,#f59e0b); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .skor-alani { display: flex; gap: 8px; align-items: center; }
+  .puan-badge { background: #fbbf24; color: #0f172a; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 800; }
+  .seviye-badge { background: #3b82f6; color: #fff; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+
+  .filtreler {
+    position: fixed; top: 62px; left: 50%; transform: translateX(-50%); z-index: 1500;
+    display: flex; gap: 6px; flex-wrap: wrap; justify-content: center;
+    background: #1e293bee; backdrop-filter: blur(8px);
+    padding: 6px 10px; border-radius: 30px; border: 1px solid #334155;
+  }
+  .filtreler button { background: transparent; border: 1px solid #475569; color: #cbd5e1; padding: 5px 12px; border-radius: 20px; cursor: pointer; font-size: 11px; transition: all .25s; }
+  .filtreler button.aktif { background: #fbbf24; color: #0f172a; border-color: #fbbf24; font-weight: 700; }
+
+  #yakiniBtn, #panelBtn, #ekleBtn {
+    position: fixed; z-index: 1500; width: 52px; height: 52px; border-radius: 50%;
+    border: none; font-size: 22px; cursor: pointer; transition: transform .2s;
+  }
+  #yakiniBtn { bottom: 90px; right: 16px; background: #3b82f6; color: #fff; box-shadow: 0 4px 16px #3b82f688; }
+  #panelBtn { bottom: 28px; right: 16px; background: #fbbf24; color: #0f172a; box-shadow: 0 4px 16px #fbbf2488; }
+  #ekleBtn { bottom: 152px; right: 16px; background: #10b981; color: #fff; box-shadow: 0 4px 16px #10b98188; }
+  #yakiniBtn:active, #panelBtn:active, #ekleBtn:active { transform: scale(.9); }
+
+  #kart {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: #1e293bfa; backdrop-filter: blur(12px);
+    border-top: 3px solid #fbbf24; border-radius: 20px 20px 0 0;
+    display: none; max-height: 72vh; z-index: 3000;
+    box-shadow: 0 -8px 32px #0006; flex-direction: column;
+  }
+  #kart.acik { display: flex; animation: kartAc .3s ease; }
+  @keyframes kartAc { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+  .kart-baslik { padding: 14px 18px 8px; position: relative; flex-shrink: 0; }
+  .kart-baslik .kapat { position: absolute; top: 10px; right: 14px; background: #334155; border: none; color: #cbd5e1; width: 30px; height: 30px; border-radius: 50%; font-size: 16px; cursor: pointer; }
+  .rozet-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+  .rozet, .rakim { display: inline-block; font-size: 10px; padding: 3px 10px; border-radius: 10px; text-transform: uppercase; letter-spacing: .5px; }
+  .rozet { background: #fbbf2422; color: #fbbf24; }
+  .rakim { background: #3b82f622; color: #60a5fa; }
+  .kart-baslik h2 { font-size: 17px; color: #f8fafc; padding-right: 40px; }
+
+  .sekmeler { display: flex; gap: 4px; padding: 0 18px; border-bottom: 1px solid #334155; flex-shrink: 0; }
+  .sekmeler button { background: transparent; border: none; color: #64748b; padding: 10px 14px; font-size: 12px; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; transition: all .2s; }
+  .sekmeler button.aktif { color: #fbbf24; border-bottom-color: #fbbf24; }
+
+  .kart-icerik { padding: 14px 18px 18px; overflow-y: auto; flex: 1; }
+  .kart-icerik p { font-size: 13px; color: #94a3b8; line-height: 1.5; }
+
+  .soru { background: #0f172a; border: 1px solid #334155; border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; }
+  .soru-baslik { font-size: 13px; color: #f8fafc; font-weight: 600; margin-bottom: 10px; display: flex; justify-content: space-between; gap: 8px; }
+  .soru-puan { background: #fbbf2422; color: #fbbf24; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; white-space: nowrap; }
+  .secenek { display: flex; align-items: center; gap: 8px; padding: 8px 10px; margin-bottom: 4px; background: #1e293b; border-radius: 8px; cursor: pointer; font-size: 12px; color: #cbd5e1; transition: all .15s; border: 1px solid transparent; }
+  .secenek:hover { background: #334155; }
+  .secenek.secili { border-color: #fbbf24; background: #fbbf2410; }
+  .secenek.dogru { border-color: #10b981; background: #10b98115; }
+  .secenek.yanlis { border-color: #ef4444; background: #ef444415; }
+  .secenek input { accent-color: #fbbf24; }
+
+  .sayi-input { width: 100%; background: #1e293b; border: 1px solid #475569; color: #f8fafc; padding: 10px 12px; border-radius: 8px; font-size: 14px; }
+  .sayi-input:focus { outline: none; border-color: #fbbf24; }
+
+  .btn-kontrol { width: 100%; margin-top: 10px; background: #3b82f6; color: #fff; border: none; padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .btn-kontrol:disabled { background: #475569; cursor: default; }
+  .sonuc-mesaj { margin-top: 8px; padding: 8px 10px; border-radius: 6px; font-size: 11px; line-height: 1.4; }
+  .sonuc-mesaj.basari { background: #10b98115; color: #6ee7b7; }
+  .sonuc-mesaj.hata { background: #ef444415; color: #fca5a5; }
+
+  .cevre-tablo { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  .cevre-tablo th, .cevre-tablo td { padding: 8px 6px; font-size: 12px; text-align: left; border-bottom: 1px solid #334155; }
+  .cevre-tablo th { color: #fbbf24; font-weight: 600; }
+  .cevre-tablo td { color: #cbd5e1; }
+  .cevre-tablo input { accent-color: #fbbf24; width: 16px; height: 16px; }
+  .cevre-tablo tr.dogru td { color: #10b981; }
+  .cevre-tablo tr.yanlis td { color: #ef4444; }
+
+  #gorevPanel { position: fixed; top: 0; right: -340px; width: 320px; height: 100%; background: #1e293b; border-left: 1px solid #334155; z-index: 4000; transition: right .3s cubic-bezier(.4,0,.2,1); padding: 20px 18px; overflow-y: auto; }
+  #gorevPanel.acik { right: 0; }
+  #gorevPanel h3 { font-size: 15px; color: #fbbf24; margin-bottom: 6px; }
+  #gorevPanel .seviye-bilgi { font-size: 11px; color: #94a3b8; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid #334155; }
+  .kapat-panel { position: absolute; top: 16px; right: 16px; background: #334155; border: none; color: #cbd5e1; width: 30px; height: 30px; border-radius: 50%; font-size: 14px; cursor: pointer; }
+  .gorev-item { display: flex; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid #334155; font-size: 12px; color: #e2e8f0; cursor: pointer; }
+  .gorev-item .yer-puan { margin-left: auto; background: #fbbf2422; color: #fbbf24; padding: 2px 8px; border-radius: 8px; font-size: 10px; font-weight: 700; }
+  .gorev-item .yer-puan.tam { background: #10b98122; color: #10b981; }
+
+  .marker-nokta { width: 14px; height: 14px; border-radius: 50%; background: #fbbf24; border: 2px solid #fff; box-shadow: 0 0 0 0 #fbbf2488; animation: pulse 2s infinite; }
+  .marker-nokta.tamam { background: #10b981; animation: none; }
+  .marker-nokta.kismi { background: #f59e0b; animation: none; }
+  .marker-nokta.kullanici { background: #10b981; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 #fbbf2488; } 70% { box-shadow: 0 0 0 12px #fbbf2400; } 100% { box-shadow: 0 0 0 0 #fbbf2400; } }
+
+  .kutlama { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); background: #1e293bfa; padding: 28px 36px; border-radius: 20px; border: 2px solid #fbbf24; box-shadow: 0 8px 48px #0008; z-index: 5000; text-align: center; display: none; }
+  .kutlama h2 { color: #fbbf24; font-size: 22px; margin-bottom: 8px; }
+  .kutlama p { color: #94a3b8; font-size: 13px; }
+
+  .bildirim { position: fixed; top: 80px; left: 50%; transform: translateX(-50%); background: #10b981; color: #fff; padding: 10px 20px; border-radius: 30px; font-size: 13px; font-weight: 600; z-index: 6000; box-shadow: 0 4px 16px #10b98166; }
+
+  .modal { position: fixed; inset: 0; background: #000a; z-index: 7000; display: none; align-items: center; justify-content: center; padding: 16px; }
+  .modal.acik { display: flex; }
+  .modal-icerik { background: #1e293b; border-radius: 16px; padding: 20px; width: 100%; max-width: 380px; position: relative; max-height: 90vh; overflow-y: auto; }
+  .modal-icerik h3 { color: #fbbf24; font-size: 16px; margin-bottom: 14px; }
+  .modal-icerik label { display: block; font-size: 11px; color: #94a3b8; margin: 10px 0 4px; text-transform: uppercase; letter-spacing: .5px; }
+  .form-input { width: 100%; background: #0f172a; border: 1px solid #475569; color: #f8fafc; padding: 9px 11px; border-radius: 8px; font-size: 13px; font-family: inherit; }
+  .form-input:focus { outline: none; border-color: #fbbf24; }
+  .konum-satir { display: flex; gap: 8px; }
+  .btn-konum { width: 100%; margin-top: 8px; background: #3b82f6; color: #fff; border: none; padding: 9px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .btn-kaydet { width: 100%; margin-top: 16px; background: #fbbf24; color: #0f172a; border: none; padding: 11px; border-radius: 8px; font-size: 13px; font-weight: 800; cursor: pointer; }
+  .modal-icerik .kapat { position: absolute; top: 12px; right: 12px; background: #334155; border: none; color: #cbd5e1; width: 30px; height: 30px; border-radius: 50%; font-size: 16px; cursor: pointer; }
+  .sil-btn { background: #ef4444; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; margin-top: 10px; }
+
+  /* QR kod alanı */
+  .qr-alani {
+    display: flex; align-items: center; gap: 12px;
+    margin-top: 14px; padding: 12px;
+    background: #0f172a; border: 1px solid #334155; border-radius: 12px;
+  }
+  .qr-alani .qr-kutu {
+    background: #fff; padding: 6px; border-radius: 8px;
+    width: 96px; height: 96px; flex-shrink: 0;
+  }
+  .qr-alani .qr-kutu canvas, .qr-alani .qr-kutu img { width: 84px !important; height: 84px !important; }
+  .qr-alani .qr-metin { font-size: 11px; color: #94a3b8; line-height: 1.4; }
+  .qr-alani .qr-metin strong { color: #fbbf24; display: block; margin-bottom: 4px; font-size: 12px; }
+
+  /* Test modu göstergesi */
+  .test-rozet {
+    position: fixed; top: 62px; right: 16px; z-index: 1400;
+    background: #ef4444; color: #fff; padding: 4px 10px;
+    border-radius: 20px; font-size: 10px; font-weight: 700;
+    letter-spacing: .5px; display: none;
+  }
+  .test-rozet.aktif { display: block; animation: pulse 1.5s infinite; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🏔️ Horasan İnteraktif Rehber</h1>
+  <div class="skor-alani">
+    <span class="seviye-badge" id="seviyeText">Gezgin</span>
+    <span class="puan-badge" id="puanText">0 puan</span>
+  </div>
+</header>
+
+<div class="filtreler" id="filtreler">
+  <button data-f="hepsi" class="aktif">Tümü</button>
+  <button data-f="tarihi">Tarihi</button>
+  <button data-f="dini">Dini</button>
+  <button data-f="kulturel">Kültürel</button>
+  <button data-f="doga">Doğa</button>
+  <button data-f="diger">Diğer</button>
+</div>
+
+<div id="harita"></div>
+
+<button id="ekleBtn" title="Yeni Nokta Ekle">➕</button>
+<button id="yakiniBtn" title="Yakınımdakiler">📍</button>
+<button id="panelBtn" title="Görev Listesi">📋</button>
+
+<div id="kart">
+  <div class="kart-baslik">
+    <button class="kapat" onclick="kartKapat()">×</button>
+    <div class="rozet-row">
+      <span class="rozet" id="kartKategori"></span>
+      <span class="rakim" id="kartRakim"></span>
+    </div>
+    <h2 id="kartAd"></h2>
+  </div>
+  <div class="sekmeler" id="sekmeler">
+    <button data-s="gorev" class="aktif">🎯 Görevler</button>
+    <button data-s="cevre">🔍 Çevre</button>
+    <button data-s="bilgi">ℹ️ Bilgi</button>
+  </div>
+  <div class="kart-icerik" id="kartIcerik"></div>
+</div>
+
+<div id="gorevPanel">
+  <button class="kapat-panel" onclick="panelKapat()">×</button>
+  <h3>📋 Görev Listesi</h3>
+  <div class="seviye-bilgi" id="seviyeBilgi"></div>
+  <div id="gorevListesi"></div>
+</div>
+
+<div class="kutlama" id="kutlama">
+  <h2>🏅 Horasan Ustası!</h2>
+  <p>Tüm görevleri tamamladın. Tebrikler!</p>
+</div>
+
+<div class="modal" id="ekleModal">
+  <div class="modal-icerik">
+    <button class="kapat" onclick="ekleModalKapat()">×</button>
+    <h3>📍 Yeni Nokta Ekle</h3>
+    <label>Ad</label>
+    <input class="form-input" id="fAd" placeholder="Örn: Ali'nin Kahvesi">
+    <label>Kategori</label>
+    <select class="form-input" id="fKategori">
+      <option value="kulturel">Kültürel</option>
+      <option value="tarihi">Tarihi</option>
+      <option value="dini">Dini</option>
+      <option value="doga">Doğa</option>
+      <option value="diger">Diğer</option>
+    </select>
+    <label>Açıklama</label>
+    <textarea class="form-input" id="fAciklama" rows="3" placeholder="Kısa bir not..."></textarea>
+    <label>Konum</label>
+    <div class="konum-satir">
+      <input class="form-input" id="fLat" placeholder="Enlem" type="number" step="any">
+      <input class="form-input" id="fLng" placeholder="Boylam" type="number" step="any">
+    </div>
+    <button class="btn-konum" onclick="konumumAl()">📍 Konumumu kullan</button>
+    <button class="btn-kaydet" onclick="noktaKaydet()">Kaydet</button>
+  </div>
+</div>
+
+<div class="test-rozet" id="testRozet">⏱️ TEST MODU</div>
+
+<div class="modal" id="testModal">
+  <div class="modal-icerik">
+    <button class="kapat" onclick="testModalKapat()">×</button>
+    <h3>⏱️ Saha Testi Ölçümü</h3>
+    <p style="font-size:11px;color:#94a3b8;margin-bottom:12px;">
+      Testi başlat, katılımcıya görevi ver, bitince durdur. Süre ve tıklama sayısı kaydedilir.
+    </p>
+    <label>Katılımcı adı/kodu</label>
+    <input class="form-input" id="tKatilimci" placeholder="Örn: K1, Ayşe">
+    <label>Görev</label>
+    <select class="form-input" id="tGorev">
+      <option value="bilgi">Bir yerin rakımını bul</option>
+      <option value="gorev">Bir görevi tamamla</option>
+      <option value="qr">QR ile bir noktaya ulaş</option>
+      <option value="serbest">Serbest keşif</option>
+    </select>
+    <div style="display:flex;gap:8px;margin-top:14px;">
+      <button class="btn-konum" id="tBaslat" style="background:#10b981;">▶ Başlat</button>
+      <button class="btn-konum" id="tDurdur" style="background:#ef4444;" disabled>■ Durdur</button>
+    </div>
+    <div id="tSonuc" style="margin-top:12px;"></div>
+    <button class="btn-konum" id="tRapor" style="background:#6366f1;margin-top:8px;">📊 Tüm testleri göster</button>
+    <button class="btn-konum" id="tSus" style="background:#f59e0b;margin-top:8px;">📝 Kullanılabilirlik Anketi (SUS)</button>
+  </div>
+</div>
+
+<div class="modal" id="susModal">
+  <div class="modal-icerik">
+    <button class="kapat" onclick="susKapat()">×</button>
+    <h3>📝 Kullanılabilirlik Anketi (SUS)</h3>
+    <p style="font-size:11px;color:#94a3b8;margin-bottom:12px;">
+      1 = Kesinlikle katılmıyorum, 5 = Kesinlikle katılıyorum
+    </p>
+    <div id="susSorular"></div>
+    <button class="btn-kaydet" id="susGonder">Gönder</button>
+  </div>
+</div>
+
+<button id="testBtn" title="Saha Testi" style="
+  position:fixed; bottom:214px; right:16px; z-index:1500;
+  width:52px; height:52px; border-radius:50%; border:none;
+  font-size:22px; cursor:pointer; background:#6366f1; color:#fff;
+  box-shadow:0 4px 16px #6366f188;
+">⏱️</button>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ============================================================
+// VERİ
+// ============================================================
+const YERLER = [
+  {
+    id: "kent-meydani", ad: "Horasan Kent Meydanı", kategori: "kulturel",
+    lat: 40.0417, lng: 42.1673, rakim: "~1556 m",
+    aciklama: "İlçe merkezinin kalbi. İpek Yolu güzergahında tarihi bir kavşak. Kent merkezi rakımı ~1556 m.",
+    sorular: [
+      { tip: "secmeli", puan: 10, soru: "Meydandaki saat kulesinin yüksekliği yaklaşık kaç metredir?", secenekler: ["5 m","12 m","25 m","40 m"], dogru: 1 },
+      { tip: "coklu", puan: 15, soru: "Meydan çevresinde hangileri bulunur?", secenekler: ["Çay bahçesi","Tarihi çeşme","Alışveriş dükkânları","Yüzme havuzu"], dogrular: [0,1,2] }
+    ],
+    cevre: [
+      { esya: "Bank", varMi: true }, { esya: "Çeşme", varMi: true },
+      { esya: "Gölgelik / ağaç", varMi: true }, { esya: "Ücretsiz Wi-Fi", varMi: false },
+      { esya: "Engelli rampası", varMi: true }
+    ]
+  },
+  {
+    id: "mevlut-alpa", ad: "H. Mevlüt Alpa Camii", kategori: "dini",
+    lat: 40.03857, lng: 42.16186, rakim: "~1556 m",
+    aciklama: "Horasan merkezinde, tren istasyonuna ~241 m mesafede.",
+    sorular: [
+      { tip: "sayi", puan: 15, soru: "Kitabede yazan yapım yılı yaklaşık kaçtır? (±5 yıl tolerans)", dogru: 1965, tolerans: 5 },
+      { tip: "dogru-yanlis", puan: 10, soru: "Caminin avlusunda şadırvan bulunur.", dogru: true }
+    ],
+    cevre: [
+      { esya: "Şadırvan", varMi: true }, { esya: "Ayakkabı rafı", varMi: true },
+      { esya: "Kütüphane", varMi: false }, { esya: "Otopark", varMi: true }
+    ]
+  },
+  {
+    id: "bilal-habesi", ad: "Bilal Habeşi Camii", kategori: "dini",
+    lat: 40.04341, lng: 42.17447, rakim: "~1560 m",
+    aciklama: "Horasan merkezde, Şerefiye Camii'ne ~375 m mesafede.",
+    sorular: [
+      { tip: "secmeli", puan: 10, soru: "Minaresi kaç şerefelidir?", secenekler: ["1 şerefeli","2 şerefeli","3 şerefeli","Minare yok"], dogru: 0 },
+      { tip: "coklu", puan: 15, soru: "Çevresinde hangi yapılar var?", secenekler: ["Konutlar","Okul","Market","Havalimanı"], dogrular: [0,1,2] }
+    ],
+    cevre: [
+      { esya: "Şadırvan", varMi: true }, { esya: "Kuran kursu", varMi: true },
+      { esya: "Park yeri", varMi: true }, { esya: "Kafeterya", varMi: false }
+    ]
+  },
+  {
+    id: "serefiye", ad: "Şerefiye Camii", kategori: "dini",
+    lat: 40.04592, lng: 42.17152, rakim: "~1565 m",
+    aciklama: "Horasan'ın kuzey kesiminde, tren istasyonuna ~972 m.",
+    sorular: [
+      { tip: "sayi", puan: 10, soru: "Avluda yaklaşık kaç ağaç vardır? (±2 tolerans)", dogru: 6, tolerans: 2 },
+      { tip: "secmeli", puan: 10, soru: "Mimari tarzı hangisine daha yakındır?", secenekler: ["Osmanlı","Selçuklu","Modern","Gotik"], dogru: 0 }
+    ],
+    cevre: [
+      { esya: "Ağaç / gölgelik", varMi: true }, { esya: "Şadırvan", varMi: true },
+      { esya: "Mezarlık", varMi: false }, { esya: "Otopark", varMi: true }
+    ]
+  },
+  {
+    id: "tren", ad: "Horasan Tren İstasyonu", kategori: "tarihi",
+    lat: 40.0408, lng: 42.16245, rakim: "~1558 m",
+    aciklama: "Doğu Ekspresi hattı üzerindeki tarihi istasyon.",
+    sorular: [
+      { tip: "secmeli", puan: 15, soru: "Hangi demiryolu hattı üzerindedir?", secenekler: ["Doğu Ekspresi","Başkent Ekspresi","İzmir Mavi","Van Gölü"], dogru: 0 },
+      { tip: "coklu", puan: 15, soru: "İstasyon binasında hangileri var?", secenekler: ["Bilet gişesi","Bekleme salonu","Büfe","Yüzme havuzu"], dogrular: [0,1,2] }
+    ],
+    cevre: [
+      { esya: "Bilet gişesi", varMi: true }, { esya: "Bekleme salonu", varMi: true },
+      { esya: "Tuvalet", varMi: true }, { esya: "Otel", varMi: false }
+    ]
+  },
+  {
+    id: "kopru", ad: "Tarihi Horasan Köprüsü", kategori: "tarihi",
+    lat: 40.0425, lng: 42.1850, rakim: "~1545 m",
+    aciklama: "1941'de inşa edilmiş, 111 m uzunluğunda 3 açıklıklı köprü.",
+    sorular: [
+      { tip: "sayi", puan: 15, soru: "Kaç gözü (kemer açıklığı) vardır?", dogru: 3, tolerans: 0 },
+      { tip: "secmeli", puan: 10, soru: "Hangi yılda inşa edilmiştir?", secenekler: ["1923","1941","1960","1980"], dogru: 1 }
+    ],
+    cevre: [
+      { esya: "Yaya yolu", varMi: true }, { esya: "Korkuluk", varMi: true },
+      { esya: "Aydınlatma", varMi: true }, { esya: "Bank", varMi: false }
+    ]
+  },
+  {
+    id: "horasan-baba", ad: "Horasan Baba Türbesi", kategori: "dini",
+    lat: 40.0410, lng: 42.1680, rakim: "~1556 m",
+    aciklama: "Horasan'ın merkezinde bulunan tarihi türbe.",
+    sorular: [
+      { tip: "secmeli", puan: 10, soru: "Girişteki yazıt hangi alfabeyle?", secenekler: ["Latin","Arap","Kiril","Runik"], dogru: 1 },
+      { tip: "dogru-yanlis", puan: 10,
